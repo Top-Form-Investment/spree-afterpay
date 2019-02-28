@@ -44,6 +44,11 @@ module Spree
       RestClient::Request.execute(method: :post, url: "#{preferred_endpoint}/orders", payload: JSON.dump(build_order(order)), headers: header)
     end
 
+    def get_order(token)
+      response = RestClient::Request.execute(method: :get, url: "#{preferred_endpoint}/orders/#{token}", headers: header)
+      payment = JSON.parse(response)
+    end
+
 
     def capture(order, token, payer_id)
        status = order.payments.valid.count <= 1 && order.payments.valid.last.try(:state) != 'completed'
@@ -55,19 +60,17 @@ module Spree
           payment = {'status'=> e.to_s}
         end
         if payment['status'] == 'APPROVED'
-
-          if  
-            order.payments.create!(
+          order.payments.create!(
               source: Spree::AfterpayCheckout.create(
                 token: token,
                 payer_id: payer_id,
                 transaction_id: payment['id']
               ),
-              amount: order.total,
+              amount: payment["totalAmount"]["amount"],
               payment_method_id: self.id,
               state:  'completed'
             )
-          end
+       
           payment['status']
         else
           payment['status']

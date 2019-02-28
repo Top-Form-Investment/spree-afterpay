@@ -7,7 +7,11 @@ module Spree
       begin
         order = current_order
         res = JSON.parse(payment_method.purchase(order))
-        redirect_to "#{payment_method.preferred_shopper_portal_url}/checkout/?token=#{res['token']}"
+        if order.payments.valid.present?
+          redirect_to :back, notice: "seems like your payment is capture please connect to our customer service for more details before trying the payment"
+        else
+          redirect_to "#{payment_method.preferred_shopper_portal_url}/checkout/?token=#{res['token']}"
+        end
       rescue StandardError
         redirect_to :back, notice: 'Something went wrong please try with other options'
       end
@@ -17,17 +21,33 @@ module Spree
       if params['status'] == 'SUCCESS'
         order = current_order || raise(ActiveRecord::RecordNotFound)
         payment = payment_method.capture(order, params[:orderToken], params[:PayerID])
+       
         if payment == 'APPROVED'
           order.reload 
-          order.next
+          while order.next do 
+            order.next
+          end
+        elsif payment == 'paid'
+          while order.next do 
+            order.next
+          end
         end
+        
+
         if order.complete?
           flash.notice = Spree.t(:order_processed_successfully)
           flash[:order_completed] = true
           session[:order_id] = nil
           redirect_to completion_route(order)
         else
-          flash[:error] = 'Order has not completed due to payment failure' if  payment != 'APPROVED'
+          flash[:error] = 
+          if  payment != 'APPROVED'
+            'Order has not completed due to payment failure'
+          elsif payment == 'paid'
+            "seems like your payment is capture please connect to our customer service for more details before trying the payment"
+          else
+            "Order has not completed due to double session , we have receiced the #{order.payments.valid.last.amount.to_s} please connect to our customer service for more details"
+          end
           redirect_to checkout_state_path(order.state)
         end
       else
